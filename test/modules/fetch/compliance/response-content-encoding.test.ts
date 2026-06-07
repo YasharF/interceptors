@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { it, expect, beforeAll, afterEach, afterAll } from 'vitest'
+import crypto from 'node:crypto'
 import { HttpServer } from '@open-draft/test-server/http'
 import { compressResponse } from '../../../helpers'
 import { FetchInterceptor } from '../../../../src/interceptors/fetch'
@@ -111,6 +112,32 @@ it('decompresses a mocked "content-encoding: br" response body', async () => {
 
   const response = await fetch('http://localhost/resource')
   expect(await response.text()).toBe('hello world')
+})
+
+it('decompresses a large (5 MB) mocked "content-encoding: br" response body', async () => {
+  const body = Buffer.alloc(5 * 1024 * 1024)
+  for (let i = 0; i < body.length; i++) {
+    body[i] = 65 + (i % 26)
+  }
+  const expected = body.toString()
+
+  interceptor.on('request', ({ controller }) => {
+    controller.respondWith(
+      new Response(compressResponse(['br'], expected), {
+        headers: {
+          'content-encoding': 'br',
+        },
+      })
+    )
+  })
+
+  const response = await fetch('http://localhost/resource')
+  const text = await response.text()
+
+  expect(text).toHaveLength(expected.length)
+  expect(crypto.createHash('sha256').update(text).digest('hex')).toBe(
+    crypto.createHash('sha256').update(expected).digest('hex')
+  )
 })
 
 it('decompresses a bypassed "content-encoding: br" response body', async () => {
